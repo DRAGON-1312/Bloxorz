@@ -1,0 +1,120 @@
+{
+    "name": "Stage 10",
+    "grid": [
+        ".###.....######",
+        ".#G#BB#BB#S##x#",
+        ".###.....####B.",
+        "..........###B.",
+        "............##.",
+        ".............#.",
+        ".............#.",
+        "............##.",
+        ".....#####..##.",
+        ".....#s..###h#."
+    ],
+    "bridges": [
+        {
+            "id": 0,
+            "positions": [
+                [
+                    1,
+                    4
+                ]
+            ],
+            "initial_open": false
+        },
+        {
+            "id": 1,
+            "positions": [
+                [
+                    1,
+                    5
+                ]
+            ],
+            "initial_open": false
+        },
+        {
+            "id": 2,
+            "positions": [
+                [
+                    1,
+                    7
+                ]
+            ],
+            "initial_open": false
+        },
+        {
+            "id": 3,
+            "positions": [
+                [
+                    1,
+                    8
+                ]
+            ],
+            "initial_open": false
+        },
+        {
+            "id": 4,
+            "positions": [
+                [
+                    2,
+                    13
+                ]
+            ],
+            "initial_open": false
+        },
+        {
+            "id": 5,
+            "positions": [
+                [
+                    3,
+                    13
+                ]
+            ],
+            "initial_open": false
+        }
+    ],
+    "switches": [
+        {
+            "position": [
+                1,
+                13
+            ],
+            "type": "split",
+            "cube1": [
+                1,
+                13
+            ],
+            "cube2": [
+                1,
+                10
+            ]
+        },
+        {
+            "position": [
+                9,
+                6
+            ],
+            "type": "soft",
+            "bridge_ids": [
+                0,
+                1
+            ],
+            "behavior": "toggle"
+        },
+        {
+            "position": [
+                9,
+                12
+            ],
+            "type": "heavy",
+            "bridge_ids": [
+                2,
+                3,
+                4,
+                5
+            ],
+            "behavior": "toggle"
+        }
+    ]
+}
