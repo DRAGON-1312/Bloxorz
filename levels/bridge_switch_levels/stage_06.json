@@ -1,0 +1,127 @@
+{
+    "name": "Stage 06",
+    "grid": [
+        "...........####",
+        ".####BB#s####S#",
+        ".####.......###",
+        ".##s#..........",
+        ".####..........",
+        "...###s#BB###..",
+        "..........####s",
+        "###.......#####",
+        "#G###BB######..",
+        "####..........."
+    ],
+    "bridges": [
+        {
+            "id": 0,
+            "positions": [
+                [
+                    1,
+                    5
+                ]
+            ],
+            "initial_open": true
+        },
+        {
+            "id": 1,
+            "positions": [
+                [
+                    1,
+                    6
+                ]
+            ],
+            "initial_open": true
+        },
+        {
+            "id": 2,
+            "positions": [
+                [
+                    5,
+                    8
+                ]
+            ],
+            "initial_open": true
+        },
+        {
+            "id": 3,
+            "positions": [
+                [
+                    5,
+                    9
+                ]
+            ],
+            "initial_open": true
+        },
+        {
+            "id": 4,
+            "positions": [
+                [
+                    8,
+                    5
+                ]
+            ],
+            "initial_open": true
+        },
+        {
+            "id": 5,
+            "positions": [
+                [
+                    8,
+                    6
+                ]
+            ],
+            "initial_open": true
+        }
+    ],
+    "switches": [
+        {
+            "position": [
+                1,
+                8
+            ],
+            "type": "soft",
+            "bridge_ids": [
+                1,
+                0
+            ],
+            "behavior": "toggle"
+        },
+        {
+            "position": [
+                5,
+                6
+            ],
+            "type": "soft",
+            "bridge_ids": [
+                4,
+                5
+            ],
+            "behavior": "close"
+        },
+        {
+            "position": [
+                3,
+                3
+            ],
+            "type": "soft",
+            "bridge_ids": [
+                4,
+                5
+            ],
+            "behavior": "open"
+        },
+        {
+            "position": [
+                6,
+                14
+            ],
+            "type": "soft",
+            "bridge_ids": [
+                4,
+                5
+            ],
+            "behavior": "toggle"
+        }
+    ]
+}

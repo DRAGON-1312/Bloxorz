@@ -1,0 +1,83 @@
+{
+    "name": "Stage 05",
+    "grid": [
+        "...............",
+        "......####..###",
+        "####..##h#..#G#",
+        "##s#..####..###",
+        "####..####..###",
+        "#S##BB####BB###",
+        "####..####.....",
+        "...............",
+        "...............",
+        "..............."
+    ],
+    "bridges": [
+        {
+            "id": 0,
+            "positions": [
+                [
+                    5,
+                    4
+                ]
+            ],
+            "initial_open": false
+        },
+        {
+            "id": 1,
+            "positions": [
+                [
+                    5,
+                    5
+                ]
+            ],
+            "initial_open": false
+        },
+        {
+            "id": 2,
+            "positions": [
+                [
+                    5,
+                    10
+                ]
+            ],
+            "initial_open": false
+        },
+        {
+            "id": 3,
+            "positions": [
+                [
+                    5,
+                    11
+                ]
+            ],
+            "initial_open": false
+        }
+    ],
+    "switches": [
+        {
+            "position": [
+                3,
+                2
+            ],
+            "type": "soft",
+            "bridge_ids": [
+                0,
+                1
+            ],
+            "behavior": "toggle"
+        },
+        {
+            "position": [
+                2,
+                8
+            ],
+            "type": "heavy",
+            "bridge_ids": [
+                2,
+                3
+            ],
+            "behavior": "toggle"
+        }
+    ]
+}
