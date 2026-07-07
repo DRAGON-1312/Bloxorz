@@ -1,16 +1,17 @@
 import heapq
 import time
 import tracemalloc
+from itertools import count
 
 from core.level_loader import load_level
 from core.game import Game
 from core.state import State, Orientation
+from core.tiles import TileType
 from solvers.result import SearchResult
 from solvers.utils import reconstruct_path
-from core.tiles import TileType
 
 
-LEVEL_PATH = "levels/basic levels/stage_01.json"
+LEVEL_PATH = "levels/basic_levels/stage_01.json"
 
 
 def main():
@@ -65,6 +66,70 @@ def solve(game: Game) -> SearchResult:
             solution_length=...
         )
     """
+    start_time = time.perf_counter()
+    tracemalloc.start()
+
+    frontier: list[tuple[int, int, State]] = []
+    tie_breaker = count()
+
+    start_state = game.state
+    heapq.heappush(frontier, (0, next(tie_breaker), start_state))
+
+    best_cost: dict[State, int] = {start_state: 0}
+    parent: dict[State, tuple[State, str] | None] = {start_state: None}
+
+    expanded_nodes = 0
+    goal_state: State | None = None
+
+    try:
+        while frontier:
+            current_cost, _, current_state = heapq.heappop(frontier)
+
+            if current_cost > best_cost.get(current_state, float("inf")):
+                continue
+
+            expanded_nodes += 1
+
+            if game.is_goal_state(current_state):
+                goal_state = current_state
+                break
+
+            for action, next_state, step_cost in game.get_successors(current_state):
+                new_cost = current_cost + step_cost
+
+                if new_cost < best_cost.get(next_state, float("inf")):
+                    best_cost[next_state] = new_cost
+                    parent[next_state] = (current_state, action)
+                    heapq.heappush(
+                        frontier,
+                        (new_cost, next(tie_breaker), next_state)
+                    )
+
+    finally:
+        search_time = time.perf_counter() - start_time
+        _, memory_usage = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+
+    if goal_state is None:
+        return SearchResult(
+            path=None,
+            search_time=search_time,
+            memory_usage=memory_usage,
+            expanded_nodes=expanded_nodes,
+            solution_length=None,
+        )
+
+    path = reconstruct_path(parent, goal_state)
+
+    return SearchResult(
+        path=path,
+        search_time=search_time,
+        memory_usage=memory_usage,
+        expanded_nodes=expanded_nodes,
+        solution_length=len(path),
+    )
+
+            
     
     
 def cost(current: Game, reaching:Game) -> int:
