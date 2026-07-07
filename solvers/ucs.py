@@ -4,9 +4,10 @@ import tracemalloc
 
 from core.level_loader import load_level
 from core.game import Game
-from core.state import State
+from core.state import State, Orientation
 from solvers.result import SearchResult
 from solvers.utils import reconstruct_path
+from core.tiles import TileType
 
 
 LEVEL_PATH = "levels/basic levels/stage_01.json"
@@ -64,7 +65,33 @@ def solve(game: Game) -> SearchResult:
             solution_length=...
         )
     """
-    raise NotImplementedError("UCS solve() has not been implemented yet.")
+    
+    
+def cost(current: Game, reaching:Game) -> int:
+    move_cost = 1
+    
+    # standing to lying, occupies more tiles, cost +1
+    if (
+        current.state.orientation == Orientation.STANDING
+        and (
+            reaching.state.orientation == Orientation.VERTICAL
+            or reaching.state.orientation == Orientation.HORIZONTAL
+        )
+    ): move_cost += 1
+    
+    # touch a fragile tile, dangerous, cost +3
+    for coordinate in reaching.get_occupied_tiles():
+        if reaching.board.get_tile(coordinate[0],coordinate[1]) == TileType.FRAGILE:
+            move_cost += 3
+            break
+    
+    # standing on a heavy switch, cost +2
+    if reaching.state.orientation == Orientation.STANDING:
+        occupied_coordinate = reaching.get_occupied_tiles()
+        if reaching.board.get_tile(occupied_coordinate[0], occupied_coordinate[1]) == "heavy_switch":
+            move_cost += 2
+    
+    return move_cost
 
 
 if __name__ == "__main__":
