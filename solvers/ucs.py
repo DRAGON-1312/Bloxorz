@@ -1,10 +1,12 @@
 import heapq
 import time
 import tracemalloc
+from itertools import count
 
 from core.level_loader import load_level
 from core.game import Game
-from core.state import State
+from core.state import State, Orientation
+from core.tiles import TileType
 from solvers.result import SearchResult
 from solvers.utils import reconstruct_path
 
