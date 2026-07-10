@@ -21,6 +21,12 @@ CUBE_MOVE_DELTAS = {
 }
 
 
+NORMAL_MOVE_COST = 1
+STANDIND_TO_LYING_COST = 2
+HEAVY_SWITCH_COST = 3
+FRAGILE_TILE_COST = 4
+
+
 class Game:
     def __init__(self, board):
         self.board = board
@@ -185,33 +191,57 @@ class Game:
         )
     
 
-    def activate_switch(self, switch: dict, bridge_states: list[bool]):
+    def activate_switch(self, switch: dict, bridge_states: list[bool]) -> None:
         """
-        Update bridge states according to the switch behavior.
+        Update bridge states according to the switch metadata.
 
-        Supported behaviors:
-        - "toggle": open becomes closed, closed becomes open
-        - "open": permanently set linked bridges to open
-        - "close": permanently set linked bridges to closed
+        A normal switch contains:
+            bridge_ids
+            behavior
+
+        A switch with mixed effects contains:
+            effects = [
+                {
+                    "bridge_ids": [...],
+                    "behavior": "open" | "close" | "toggle"
+                },
+                ...
+            ]
         """
-        behavior = switch.get("behavior", "toggle")
-        bridge_ids = switch.get("bridge_ids", [])
+        effects = switch.get("effects")
 
-        for bridge_id in bridge_ids:
-            if bridge_id < 0 or bridge_id >= len(bridge_states):
-                raise ValueError(f"Invalid bridge id in switch: {bridge_id}")
+        # Keep compatibility with all existing level JSON files.
+        if effects is None:
+            effects = [
+                {
+                    "bridge_ids": switch.get("bridge_ids", []),
+                    "behavior": switch.get("behavior", "toggle")
+                }
+            ]
 
-            if behavior == "toggle":
-                bridge_states[bridge_id] = not bridge_states[bridge_id]
+        for effect in effects:
+            behavior = effect.get("behavior", "toggle")
+            bridge_ids = effect.get("bridge_ids", [])
 
-            elif behavior == "open":
-                bridge_states[bridge_id] = True
+            for bridge_id in bridge_ids:
+                if bridge_id < 0 or bridge_id >= len(bridge_states):
+                    raise ValueError(
+                        f"Invalid bridge id in switch: {bridge_id}"
+                    )
 
-            elif behavior == "close":
-                bridge_states[bridge_id] = False
+                if behavior == "toggle":
+                    bridge_states[bridge_id] = not bridge_states[bridge_id]
 
-            else:
-                raise ValueError(f"Unknown switch behavior: {behavior}")
+                elif behavior == "open":
+                    bridge_states[bridge_id] = True
+
+                elif behavior == "close":
+                    bridge_states[bridge_id] = False
+
+                else:
+                    raise ValueError(
+                        f"Unknown switch behavior: {behavior}"
+                    )
 
 
     def move_active_cube(self, state: State, direction: str) -> State | None:
@@ -410,6 +440,58 @@ class Game:
         )
     
 
+    def get_move_cost(self, current_state: State, next_state: State, action: str) -> int:
+        """
+        Compute the non-uniform cost of a valid move.
+
+        Cost design:
+        - normal move / soft switch / switch cube: 1
+        - standing -> lying transition: 2
+        - activating heavy switch while standing: 3
+        - moving across fragile tile: 4
+
+        If multiple conditions apply, use the maximum applicable cost.
+        """
+        action = action.upper()
+
+        # switching control between split cubes is a simple control action.
+        if action in {SWITCH_CUBE, "SPACE"}:
+            return NORMAL_MOVE_COST
+
+        cost = NORMAL_MOVE_COST
+
+        # Case 1: standing -> lying transition
+        # This is riskier because the block occupies two cells after the move
+        if (
+            current_state.mode == BlockMode.NORMAL
+            and current_state.orientation == Orientation.STANDING
+            and next_state.mode == BlockMode.NORMAL
+            and next_state.orientation in {Orientation.HORIZONTAL, Orientation.VERTICAL}
+        ):
+            cost = max(cost, STANDIND_TO_LYING_COST)
+
+        # Check the tiles occupied by the next state
+        for row, col in get_occupied_tiles(next_state):
+            tile = self.board.get_tile(row, col)
+
+            # Case 2: fragile tile
+            # Standing on fragile is already invalid, so this only applies
+            # to valid states such as lying across fragile or split cube on fragile
+            if tile == TileType.FRAGILE:
+                cost = max(cost, FRAGILE_TILE_COST)
+
+            # Case 3: heavy switch
+            # Heavy switch is only activated by a normal standing block
+            if (
+                tile == TileType.HEAVY_SWITCH
+                and next_state.mode == BlockMode.NORMAL
+                and next_state.orientation == Orientation.STANDING
+            ):
+                cost = max(cost, HEAVY_SWITCH_COST)
+
+        return cost
+
+
     def get_successors(self, state: State) -> list[tuple[str, State, int]]:
         successors = []
 
@@ -422,7 +504,11 @@ class Game:
             next_state = self.apply_move(state, action)
             
             if next_state is not None:
-                cost = 1
+                cost = self.get_move_cost(
+                    current_state=state,
+                    next_state=next_state,
+                    action=action
+                )
                 successors.append((action, next_state, cost))
 
         return successors

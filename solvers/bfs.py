@@ -6,10 +6,10 @@ from core.level_loader import load_level
 from core.game import Game
 from core.state import State
 from solvers.result import SearchResult
-from solvers.utils import reconstruct_path
+from solvers.utils import reconstruct_path, calculate_path_cost
 
 
-LEVEL_PATH = "levels/basic_levels/stage_01.json"
+LEVEL_PATH = "levels/combined_advanced_levels/stage_09.json"
 
 
 def main():
@@ -29,6 +29,7 @@ def main():
     print(f"Memory usage: {result.memory_usage / 1024:.2f} KB")
     print(f"Expanded nodes: {result.expanded_nodes}")
     print(f"Solution length: {result.solution_length}")
+    print(f"Solution cost: {result.solution_cost}")
 
     if result.path is not None:
         for action in result.path:
@@ -92,10 +93,13 @@ def solve(game: Game) -> SearchResult:
             memory_usage=memory_usage,
             expanded_nodes=expanded_nodes,
             solution_length=None,
+            solution_cost=None
         )
 
     # Nếu tìm thấy đích, gọi hàm reconstruct_path để lấy danh sách hành động
     path = reconstruct_path(parent, goal_state)
+
+    solution_cost = calculate_path_cost(game, path)
 
     return SearchResult(
         path=path,
@@ -103,6 +107,7 @@ def solve(game: Game) -> SearchResult:
         memory_usage=memory_usage,
         expanded_nodes=expanded_nodes,
         solution_length=len(path),
+        solution_cost=solution_cost
     )
 
 

@@ -11,7 +11,7 @@ from solvers.result import SearchResult
 from solvers.utils import reconstruct_path
 
 
-LEVEL_PATH = "levels/basic_levels/stage_01.json"
+LEVEL_PATH = "levels/combined_advanced_levels/stage_09.json"
 
 
 def main():
@@ -31,6 +31,7 @@ def main():
     print(f"Memory usage: {result.memory_usage / 1024:.2f} KB")
     print(f"Expanded nodes: {result.expanded_nodes}")
     print(f"Solution length: {result.solution_length}")
+    print(f"Solution cost: {result.solution_cost}")
 
     if result.path is not None:
         for action in result.path:
@@ -48,115 +49,98 @@ def main():
 
 def solve(game: Game) -> SearchResult:
     """
-    TODO:
-    Implement Uniform-Cost Search.
+    Uniform-Cost Search.
 
-    Notes:
-    - Use a priority queue with heapq.
-    - The priority should be the path cost g(n).
-    - If every move has cost 1, UCS behaves like BFS.
-    - For the report, define and justify the cost function.
+    UCS always expands the state with the lowest path cost g(n).
 
-    Expected return:
-        SearchResult(
-            path=...,
-            search_time=...,
-            memory_usage=...,
-            expanded_nodes=...,
-            solution_length=...
-        )
+    g(n): real cost from the initial state to the current state.
+    The step cost is provided by game.get_successors().
     """
-    start_time = time.perf_counter()
     tracemalloc.start()
+    start_time = time.perf_counter()
 
-    frontier: list[tuple[int, int, State]] = []
-    tie_breaker = count()
+    start_state = game.initial_state
 
-    start_state = game.state
-    heapq.heappush(frontier, (0, next(tie_breaker), start_state))
+    frontier = []
+    counter = 0
 
-    best_cost: dict[State, int] = {start_state: 0}
-    parent: dict[State, tuple[State, str] | None] = {start_state: None}
-
-    expanded_nodes = 0
-    goal_state: State | None = None
-
-    try:
-        while frontier:
-            current_cost, _, current_state = heapq.heappop(frontier)
-
-            if current_cost > best_cost.get(current_state, float("inf")):
-                continue
-
-            expanded_nodes += 1
-
-            if game.is_goal_state(current_state):
-                goal_state = current_state
-                break
-
-            for action, next_state, step_cost in game.get_successors(current_state):
-                new_cost = current_cost + step_cost
-
-                if new_cost < best_cost.get(next_state, float("inf")):
-                    best_cost[next_state] = new_cost
-                    parent[next_state] = (current_state, action)
-                    heapq.heappush(
-                        frontier,
-                        (new_cost, next(tie_breaker), next_state)
-                    )
-
-    finally:
-        search_time = time.perf_counter() - start_time
-        _, memory_usage = tracemalloc.get_traced_memory()
-        tracemalloc.stop()
-
-    if goal_state is None:
-        return SearchResult(
-            path=None,
-            search_time=search_time,
-            memory_usage=memory_usage,
-            expanded_nodes=expanded_nodes,
-            solution_length=None,
-        )
-
-    path = reconstruct_path(parent, goal_state)
-
-    return SearchResult(
-        path=path,
-        search_time=search_time,
-        memory_usage=memory_usage,
-        expanded_nodes=expanded_nodes,
-        solution_length=len(path),
+    # Each item in frontier:
+    # (path_cost, counter, state)
+    heapq.heappush(
+        frontier,
+        (0, counter, start_state)
     )
 
-            
-    
-    
-def cost(current: Game, reaching:Game) -> int:
-    move_cost = 1
-    
-    # standing to lying, occupies more tiles, cost +1
-    if (
-        current.state.orientation == Orientation.STANDING
-        and (
-            reaching.state.orientation == Orientation.VERTICAL
-            or reaching.state.orientation == Orientation.HORIZONTAL
-        )
-    ): move_cost += 1
-    
-    # touch a fragile tile, dangerous, cost +3
-    for coordinate in reaching.get_occupied_tiles():
-        if reaching.board.get_tile(coordinate[0],coordinate[1]) == TileType.FRAGILE:
-            move_cost += 3
-            break
-    
-    # standing on a heavy switch, cost +2
-    if reaching.state.orientation == Orientation.STANDING:
-        occupied_coordinate = reaching.get_occupied_tiles()
-        if reaching.board.get_tile(occupied_coordinate[0], occupied_coordinate[1]) == "heavy_switch":
-            move_cost += 2
-    
-    return move_cost
+    # best_cost[state] stores the lowest known cost to reach this state.
+    best_cost = {
+        start_state: 0
+    }
+
+    # parent[state] = (previous_state, action)
+    parent = {
+        start_state: None
+    }
+
+    expanded_nodes = 0
+
+    while frontier:
+        current_cost, _, current_state = heapq.heappop(frontier)
+
+        # Skip outdated entries.
+        # This happens if a cheaper path to the same state was found later.
+        if current_cost > best_cost.get(current_state, float("inf")):
+            continue
+
+        # In UCS, goal test should be done when the node is popped,
+        # because this guarantees the cheapest path to the goal.
+        if game.is_goal_state(current_state):
+            path = reconstruct_path(parent, current_state)
+
+            search_time = time.perf_counter() - start_time
+            current_memory, peak_memory = tracemalloc.get_traced_memory()
+            tracemalloc.stop()
+
+            return SearchResult(
+                path=path,
+                search_time=search_time,
+                memory_usage=peak_memory,
+                expanded_nodes=expanded_nodes,
+                solution_length=len(path),
+                solution_cost=current_cost
+            )
+
+        # The state is counted as expanded only when its successors are generated.
+        expanded_nodes += 1
+
+        for action, next_state, step_cost in game.get_successors(current_state):
+            new_cost = current_cost + step_cost
+
+            # If next_state has never been reached before,
+            # or this path is cheaper than the previous best path.
+            if new_cost < best_cost.get(next_state, float("inf")):
+                best_cost[next_state] = new_cost
+                parent[next_state] = (current_state, action)
+
+                counter += 1
+
+                heapq.heappush(
+                    frontier,
+                    (new_cost, counter, next_state)
+                )
+
+    # No solution found.
+    search_time = time.perf_counter() - start_time
+    current_memory, peak_memory = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+
+    return SearchResult(
+        path=None,
+        search_time=search_time,
+        memory_usage=peak_memory,
+        expanded_nodes=expanded_nodes,
+        solution_length=None,
+        solution_cost=None
+    )
 
 
 if __name__ == "__main__":
