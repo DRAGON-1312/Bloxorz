@@ -155,12 +155,52 @@ def validate_metadata(grid, bridges, switches, level_name):
         elif switch_type not in {"soft", "heavy", "split"}:
             raise ValueError(f"Unknown switch type '{switch_type}' in level '{level_name}'")
 
-        for bridge_id in switch.get("bridge_ids", []):
-            if bridge_id < 0 or bridge_id >= len(bridges):
+        # A switch may use either:
+        # 1. bridge_ids + behavior
+        # 2. effects containing multiple groups with different behaviors
+        effects = switch.get("effects")
+
+        if effects is None:
+            effects = [
+                {
+                    "bridge_ids": switch.get("bridge_ids", []),
+                    "behavior": switch.get("behavior", "toggle")
+                }
+            ]
+
+        elif not isinstance(effects, list) or not effects:
+            raise ValueError(
+                f"Switch at ({row}, {col}) has invalid effects "
+                f"in level '{level_name}'"
+            )
+
+        for effect in effects:
+            behavior = effect.get("behavior", "toggle")
+
+            if behavior not in {"toggle", "open", "close"}:
                 raise ValueError(
-                    f"Switch at ({row}, {col}) refers to invalid bridge id {bridge_id} "
+                    f"Switch at ({row}, {col}) has unknown behavior "
+                    f"'{behavior}' in level '{level_name}'"
+                )
+
+            bridge_ids = effect.get("bridge_ids", [])
+
+            if not isinstance(bridge_ids, list):
+                raise ValueError(
+                    f"Switch at ({row}, {col}) must have bridge_ids as a list "
                     f"in level '{level_name}'"
                 )
+
+            for bridge_id in bridge_ids:
+                if (
+                    not isinstance(bridge_id, int)
+                    or bridge_id < 0
+                    or bridge_id >= len(bridges)
+                ):
+                    raise ValueError(
+                        f"Switch at ({row}, {col}) refers to invalid bridge id "
+                        f"{bridge_id} in level '{level_name}'"
+                    )
 
         # Split switch must define cube teleport positions.
         if switch_type == "split":
