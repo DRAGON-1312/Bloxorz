@@ -8,7 +8,7 @@ class LevelManager:
     def __init__(self, levels_dir: str = "levels"):
         self.levels_dir = Path(levels_dir)
         self.level_paths: list[Path] = []
-        self.current_index: int = 6
+        self.current_index: int = 7 # level 8 to test more features
 
         self.discover_levels()
 
