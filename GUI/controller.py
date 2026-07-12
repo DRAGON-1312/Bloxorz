@@ -1,4 +1,5 @@
 from core.game import Game
+from ursina import Audio
 
 class GameController:
     def __init__(
@@ -21,6 +22,11 @@ class GameController:
         self.is_finished = False
         self.input_locked = False
 
+        self.move_sound = Audio('../assets/move.ogg', autoplay=False, volume = 1.5)
+        self.win_sound = Audio('../assets/win.ogg', autoplay=False,volume = 0.2)
+        
+        self.bg_music = Audio('../assets/bgm.ogg', loop=True, autoplay=True, volume=0.3)
+
         self.refresh_views()
 
     def handle_action(self, action: str):
@@ -35,6 +41,8 @@ class GameController:
 
         if not moved:
             return False
+
+        self.move_sound.play()
 
         self.move_count += 1
         new_state = self.game.state
@@ -79,6 +87,9 @@ class GameController:
 
     def handle_win(self):
         self.is_finished = True
+
+        self.win_sound.play()
+
         self.refresh_views()
 
         if self.hud is not None:

@@ -69,30 +69,25 @@ class BoardView:
 
         return entity
 
-    def get_tile_color(self, tile_type: TileType):
-        if tile_type == TileType.FLOOR:
-            return color.rgb(90, 90, 90)
+    def get_tile_color(self, tile_type):
+        t_name = str(tile_type).split('.')[-1].upper()
 
-        if tile_type == TileType.GOAL:
-            return color.rgb(80, 220, 120)
+        if t_name == "FLOOR":
+            return color.gray        # Gạch thường màu xám
+        if t_name == "GOAL":
+            return color.red         # ĐÍCH ĐẾN màu đỏ rực cho dễ thấy
+        if t_name == "FRAGILE":
+            return color.orange      # Gạch mỏng màu cam
+        if t_name == "BRIDGE":
+            return color.cyan        # Cầu màu xanh lơ
+        if t_name == "SOFT_SWITCH":
+            return color.yellow      # Nút bấm nhẹ màu vàng
+        if t_name == "HEAVY_SWITCH":
+            return color.magenta     # Nút bấm nặng màu hồng/tím
+        if t_name == "SPLIT_SWITCH":
+            return color.green       # Nút tách khối màu xanh lá
 
-        if tile_type == TileType.FRAGILE:
-            return color.rgb(220, 170, 80)
-
-        if tile_type == TileType.BRIDGE:
-            return color.rgb(80, 150, 220)
-
-        if tile_type == TileType.SOFT_SWITCH:
-            return color.rgb(220, 220, 80)
-
-        if tile_type == TileType.HEAVY_SWITCH:
-            return color.rgb(220, 100, 80)
-
-        if tile_type == TileType.SPLIT_SWITCH:
-            return color.rgb(180, 100, 240)
-
-        return color.white
-
+        return color.white           # Mặc định
     def board_to_world(self, row: int, col: int) -> tuple[float, float, float]:
         x = col * self.tile_size
         y = 0
