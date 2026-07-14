@@ -8,7 +8,7 @@ from solvers.result import SearchResult
 from solvers.utils import reconstruct_path, calculate_path_cost
 
 
-LEVEL_PATH = "levels/combined_advanced_levels/stage_09.json"
+LEVEL_PATH = "levels/combined_advanced_levels/stage_08.json"
 
 
 FOUND = "found"

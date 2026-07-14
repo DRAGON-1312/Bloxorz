@@ -9,6 +9,7 @@ from core.block import (
     LEFT,
     RIGHT,
 )
+from core.move_result import MoveResult, MoveStatus
 
 
 SWITCH_CUBE = "SWITCH"
@@ -44,44 +45,60 @@ class Game:
             bridges=self.board.initial_bridges,
         )
     
-    
-    def is_valid_state(self, state: State) -> bool:
+
+    def get_invalid_state_reason(
+        self,
+        state: State
+    ) -> str | None:
+        """
+        Trả về lý do state không hợp lệ.
+
+        None nghĩa là state hợp lệ.
+        """
         occupied_tiles = get_occupied_tiles(state)
 
         for row, col in occupied_tiles:
             tile = self.board.get_tile(row, col)
 
+            if tile is None:
+                return "out_of_bounds"
+
+            if tile == TileType.VOID:
+                return "void"
+
             if (
-                tile is None 
-                or tile == TileType.VOID
-                or (
-                    tile == TileType.FRAGILE 
-                    and state.orientation == Orientation.STANDING
-                    and state.mode == BlockMode.NORMAL
-                ) # case for Fragile
+                tile == TileType.FRAGILE
+                and state.mode == BlockMode.NORMAL
+                and state.orientation == Orientation.STANDING
             ):
-                return False
-            
-            # Bridge rules
+                return "standing_on_fragile"
+
             if tile == TileType.BRIDGE:
-                bridge_id = self.board.get_bridge_id(row, col)
+                bridge_id = self.board.get_bridge_id(
+                    row,
+                    col
+                )
 
                 if bridge_id is None:
                     raise ValueError(
-                        f"Bridge tile at ({row}, {col}) has no bridge id. "
-                        "Check the level JSON bridges metadata."
+                        f"Bridge tile at ({row}, {col}) "
+                        "has no bridge id."
                     )
-        
+
                 if bridge_id >= len(state.bridges):
                     raise ValueError(
-                        f"Bridge id {bridge_id} at ({row}, {col}) is out of range "
+                        f"Bridge id {bridge_id} is out of range "
                         f"for state.bridges={state.bridges}."
                     )
-                
-                if state.bridges[bridge_id] is False:
-                    return False
 
-        return True
+                if state.bridges[bridge_id] is False:
+                    return "closed_bridge"
+
+        return None
+
+    
+    def is_valid_state(self, state: State) -> bool:
+        return self.get_invalid_state_reason(state) is None
     
     
     def create_split_state(self, state: State, switch: dict, bridges: tuple) -> State:
@@ -244,53 +261,75 @@ class Game:
                     )
 
 
-    def move_active_cube(self, state: State, direction: str) -> State | None:
+    def create_split_move_candidate(
+        self,
+        state: State,
+        direction: str
+    ) -> tuple[State, tuple[int, int]] | None:
         """
-        Move the currently active cube by one cell in split mode.
+        Tạo state mà active cube cố di chuyển tới.
 
-        Only the active cube moves. The other cube stays in place.
+        Return:
+            (candidate_state, moved_position)
+
+        None:
+            Cube cố di chuyển vào đúng ô của cube còn lại.
+            Đây là action bị bỏ qua, không phải rơi.
         """
         if state.mode != BlockMode.SPLIT:
             return None
-        
+
         if state.cube1 is None or state.cube2 is None:
-            raise ValueError("Split state must have cube1 and cube2 positions.")
-        
+            raise ValueError(
+                "Split state must have cube1 and cube2 positions."
+            )
+
         direction = direction.upper()
 
         if direction not in CUBE_MOVE_DELTAS:
-            raise ValueError(f"Invalid cube move direction: {direction}")
-        
-        dr, dc = CUBE_MOVE_DELTAS[direction] # delta row, delta col
+            raise ValueError(
+                f"Invalid cube move direction: {direction}"
+            )
+
+        dr, dc = CUBE_MOVE_DELTAS[direction]
 
         cube1 = state.cube1
         cube2 = state.cube2
 
         if state.active_cube == 1:
-            old_row, old_col = cube1
-            new_cube1 = (old_row + dr, old_col + dc)
+            row, col = cube1
+
+            new_cube1 = (
+                row + dr,
+                col + dc
+            )
             new_cube2 = cube2
 
-            # A cube cannot move onto the other cube's cell.
             if new_cube1 == new_cube2:
                 return None
-            
+
             moved_position = new_cube1
-        
+
         elif state.active_cube == 2:
-            old_row, old_col = cube2
+            row, col = cube2
+
             new_cube1 = cube1
-            new_cube2 = (old_row + dr, old_col + dc)
+            new_cube2 = (
+                row + dr,
+                col + dc
+            )
 
             if new_cube2 == new_cube1:
                 return None
-            
+
             moved_position = new_cube2
 
         else:
-            raise ValueError(f"Invalid active cube: {state.active_cube}")
+            raise ValueError(
+                f"Invalid active cube: {state.active_cube}"
+            )
 
-        next_state = State(
+        candidate_state = State(
             row=state.row,
             col=state.col,
             orientation=state.orientation,
@@ -301,26 +340,42 @@ class Game:
             active_cube=state.active_cube
         )
 
-        # Check whether both cubes are still on valid tiles.
+        return candidate_state, moved_position
+
+
+    def move_active_cube(
+        self,
+        state: State,
+        direction: str
+    ) -> State | None:
+        candidate_data = self.create_split_move_candidate(
+            state,
+            direction
+        )
+
+        if candidate_data is None:
+            return None
+
+        next_state, moved_position = candidate_data
+
         if not self.is_valid_state(next_state):
             return None
-        
-        # Apply soft switch only for the cube that just moved.
+
         next_state = self.apply_switches(
             next_state,
             trigger_positions=[moved_position]
         )
 
-        # Check again because a switch may close a bridge under a cube.
         if not self.is_valid_state(next_state):
             return None
-        
-        # If the two cubes become adjacent, merge them back into a normal block.
-        next_state = self.merge_cubes_if_possible(next_state)
+
+        next_state = self.merge_cubes_if_possible(
+            next_state
+        )
 
         if not self.is_valid_state(next_state):
             return None
-        
+
         return next_state
     
 
@@ -514,14 +569,201 @@ class Game:
         return successors
     
 
-    def move(self, direction: str) -> bool:
-        next_state = self.apply_move(self.state, direction)
+    def try_move(self, action: str) -> MoveResult:
+        """
+        Thực hiện action và trả về kết quả chi tiết.
 
-        if next_state is None:
-            return False
-        
+        Hàm này dành cho GUI chơi thủ công.
+        Solver vẫn sử dụng apply_move() và get_successors().
+        """
+        previous_state = self.state
+        normalized_action = action.strip().upper()
+
+        # -----------------------------------------------
+        # Đổi active cube
+        # -----------------------------------------------
+        if normalized_action in {
+            SWITCH_CUBE,
+            "SPACE"
+        }:
+            next_state = self.switch_active_cube(
+                previous_state
+            )
+
+            if next_state is None:
+                return MoveResult(
+                    status=MoveStatus.IGNORED,
+                    previous_state=previous_state,
+                    reason="not_in_split_mode"
+                )
+
+            self.state = next_state
+
+            return MoveResult(
+                status=MoveStatus.MOVED,
+                previous_state=previous_state,
+                attempted_state=next_state,
+                resulting_state=next_state
+            )
+
+        # Action không được hỗ trợ.
+        if normalized_action not in DIRECTIONS:
+            return MoveResult(
+                status=MoveStatus.IGNORED,
+                previous_state=previous_state,
+                reason="unknown_action"
+            )
+
+        # -----------------------------------------------
+        # Split mode
+        # -----------------------------------------------
+        if previous_state.mode == BlockMode.SPLIT:
+            candidate_data = self.create_split_move_candidate(
+                previous_state,
+                normalized_action
+            )
+
+            # Cube cố đi vào đúng ô của cube còn lại.
+            if candidate_data is None:
+                return MoveResult(
+                    status=MoveStatus.IGNORED,
+                    previous_state=previous_state,
+                    reason="cube_collision"
+                )
+
+            attempted_state, moved_position = (
+                candidate_data
+            )
+
+            invalid_reason = (
+                self.get_invalid_state_reason(
+                    attempted_state
+                )
+            )
+
+            if invalid_reason is not None:
+                return MoveResult(
+                    status=MoveStatus.LOST,
+                    previous_state=previous_state,
+                    attempted_state=attempted_state,
+                    reason=invalid_reason
+                )
+
+            next_state = self.apply_switches(
+                attempted_state,
+                trigger_positions=[moved_position]
+            )
+
+            invalid_reason = (
+                self.get_invalid_state_reason(
+                    next_state
+                )
+            )
+
+            if invalid_reason is not None:
+                return MoveResult(
+                    status=MoveStatus.LOST,
+                    previous_state=previous_state,
+                    attempted_state=next_state,
+                    reason=invalid_reason
+                )
+
+            next_state = self.merge_cubes_if_possible(
+                next_state
+            )
+
+            invalid_reason = (
+                self.get_invalid_state_reason(
+                    next_state
+                )
+            )
+
+            if invalid_reason is not None:
+                return MoveResult(
+                    status=MoveStatus.LOST,
+                    previous_state=previous_state,
+                    attempted_state=next_state,
+                    reason=invalid_reason
+                )
+
+        # -----------------------------------------------
+        # Normal mode
+        # -----------------------------------------------
+        else:
+            # move_block chỉ tính chuyển động hình học,
+            # chưa kiểm tra board.
+            attempted_state = move_block(
+                previous_state,
+                normalized_action
+            )
+
+            invalid_reason = (
+                self.get_invalid_state_reason(
+                    attempted_state
+                )
+            )
+
+            if invalid_reason is not None:
+                return MoveResult(
+                    status=MoveStatus.LOST,
+                    previous_state=previous_state,
+                    attempted_state=attempted_state,
+                    reason=invalid_reason
+                )
+
+            next_state = self.apply_switches(
+                attempted_state
+            )
+
+            # Switch có thể vừa đóng bridge dưới block.
+            invalid_reason = (
+                self.get_invalid_state_reason(
+                    next_state
+                )
+            )
+
+            if invalid_reason is not None:
+                return MoveResult(
+                    status=MoveStatus.LOST,
+                    previous_state=previous_state,
+                    attempted_state=next_state,
+                    reason=invalid_reason
+                )
+
+        # -----------------------------------------------
+        # State hợp lệ
+        # -----------------------------------------------
         self.state = next_state
-        return True
+
+        if self.is_goal_state(next_state):
+            status = MoveStatus.WON
+        else:
+            status = MoveStatus.MOVED
+
+        return MoveResult(
+            status=status,
+            previous_state=previous_state,
+            attempted_state=next_state,
+            resulting_state=next_state
+        )
+
+
+    def move(self, direction: str) -> bool:
+        """
+        API tương thích với code cũ.
+
+        True:
+            MOVED hoặc WON.
+
+        False:
+            IGNORED hoặc LOST.
+        """
+        result = self.try_move(direction)
+
+        return result.status in {
+            MoveStatus.MOVED,
+            MoveStatus.WON,
+        }
     
 
     def reset(self):
