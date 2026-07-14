@@ -63,6 +63,51 @@ class HUD:
 
         self.reset_button.on_click = self.on_reset_clicked
 
+        self.path_text = Text(
+            text="", 
+            parent=camera.ui,
+            position=(-0.86, 0.10),
+            scale=1,
+            color=color.yellow, 
+            
+        )
+
+        # Dùng tên màu có sẵn để tránh lỗi trắng bóc
+        self.btn_bfs = Button(
+            text="BFS", parent=camera.ui,
+            position=(0.72, 0.35), scale=(0.16, 0.05),
+            color=color.green, text_color=color.white,
+            on_click=lambda: self.trigger_solver("BFS")
+        )
+
+        self.btn_ids = Button(
+            text="IDS", parent=camera.ui,
+            position=(0.72, 0.29), scale=(0.16, 0.05),
+            color=color.orange, text_color=color.white,
+            on_click=lambda: self.trigger_solver("IDS")
+        )
+
+        self.btn_ucs = Button(
+            text="UCS", parent=camera.ui,
+            position=(0.72, 0.23), scale=(0.16, 0.05),
+            color=color.magenta, text_color=color.white,
+            on_click=lambda: self.trigger_solver("UCS")
+        )
+
+        self.btn_astar = Button(
+            text="A*", parent=camera.ui,
+            position=(0.72, 0.17), scale=(0.16, 0.05),
+            color=color.azure, text_color=color.black,
+            on_click=lambda: self.trigger_solver("A*")
+        )
+
+    def set_game_controller(self, game_controller):
+        self.game_controller = game_controller
+
+    def trigger_solver(self, algorithm_name):
+        if self.game_controller is not None:
+            self.game_controller.run_auto_solver(algorithm_name)
+
     def set_game_controller(self, game_controller):
         self.game_controller = game_controller
 

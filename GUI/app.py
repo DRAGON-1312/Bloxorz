@@ -19,6 +19,7 @@ from GUI.input_controller import InputController
 from GUI.views.hud_view import HUD
 from GUI.save_manager import SaveManager
 from GUI.views.menu_view import MenuView
+from GUI.animation_controller import AnimationController
 
 
 class BloxorzApp:
@@ -34,12 +35,15 @@ class BloxorzApp:
         self.board_view = BoardView(self.board)
         self.block_view = BlockView()
         self.hud = HUD()
+
+        self.animation_controller = AnimationController(self.block_view)
         
         self.game_controller = GameController(
             board=self.board,
             board_view=self.board_view,
             block_view=self.block_view,
             hud=self.hud,
+            animation_controller=self.animation_controller,
         )
         
         self.hud.set_game_controller(self.game_controller)

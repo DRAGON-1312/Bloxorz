@@ -1,5 +1,10 @@
 from core.game import Game
 from ursina import Audio
+from ursina import Audio, invoke
+from solvers.bfs import solve as bfs_solve
+from solvers.ids import solve as ids_solve
+from solvers.ucs import solve as ucs_solve
+from solvers.astar import solve as astar_solve
 
 class GameController:
     def __init__(
@@ -102,7 +107,7 @@ class GameController:
         self.game = Game(self.board)
         self.move_count = 0
         self.is_finished = False
-
+        self.block_view.clear_block()
         self.refresh_views()
 
     def load_board(self, board):
@@ -113,6 +118,73 @@ class GameController:
         self.game = Game(board)
         self.move_count = 0
         self.is_finished = False
-
+        self.block_view.clear_block()
         self.board_view.load_board(board)
         self.refresh_views()
+
+    def run_auto_solver(self, algorithm_name: str):
+        if self.is_finished:
+            return
+
+        self.input_locked = False
+        self.reset()
+        self.input_locked = True 
+        
+        if self.hud is not None:
+            self.hud.path_text.text = f"AI {algorithm_name}: Đang tính toán... (Vui lòng chờ)"
+            
+        invoke(self._process_solver, algorithm_name, delay=0.1)
+
+    def _process_solver(self, algorithm_name: str):
+        try:
+            result = None
+            if algorithm_name == "BFS":
+                result = bfs_solve(self.game)
+            elif algorithm_name == "IDS":
+                result = ids_solve(self.game)
+            elif algorithm_name == "UCS":
+                result = ucs_solve(self.game)
+            elif algorithm_name == "A*":
+                result = astar_solve(self.game)
+
+            if result is None or result.path is None:
+                if self.hud is not None:
+                    self.hud.path_text.text = f"AI {algorithm_name}: Không tìm thấy đường!"
+                self.input_locked = False
+                return
+
+            actions_list = result.path
+
+            if self.hud is not None:
+                self.hud.path_text.text = (
+                    f"--- {algorithm_name} ---\n"
+                    f"Time: {result.search_time:.4f}s\n"
+                    f"Nodes: {result.expanded_nodes}\n"
+                    f"Total Steps: {result.solution_length}"
+                )
+
+            # Bắt đầu tự động lăn khối gỗ
+            self.execute_steps_one_by_one(actions_list, 0)
+            
+        except Exception as e:
+            if self.hud is not None:
+                self.hud.path_text.text = f"BÁO LỖI: {str(e)}"
+            self.input_locked = False
+
+
+    def execute_steps_one_by_one(self, actions, index):
+        # Nếu đã đi hết danh sách các bước do AI vạch ra hoặc lỡ rơi ra ngoài
+        if index >= len(actions) or self.is_finished:
+            self.input_locked = False # Mở khóa phím trả lại cho người chơi
+            return
+
+        # Lấy hành động hiện tại ra (UP, DOWN, LEFT, RIGHT...)
+        current_action = actions[index]
+        
+        # Mở khóa tạm thời để hàm handle_action cho phép khối gỗ lăn
+        self.input_locked = False
+        self.handle_action(current_action)
+        self.input_locked = True # Khóa lại ngay lập tức để chờ bước tiếp theo
+
+        # Gọi lại chính nó sau 0.3 giây (Tạo độ trễ để người chơi nhìn rõ khối gỗ lật)
+        invoke(self.execute_steps_one_by_one, actions, index + 1, delay=0.3)

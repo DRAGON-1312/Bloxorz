@@ -60,6 +60,7 @@ class BoardView:
         entity = Entity(
             parent=self.root,
             model="cube",
+            texture="white_cube",
             position=(x, y, z),
             scale=(0.95, 0.15, 0.95),
             color=self.get_tile_color(tile_type),
