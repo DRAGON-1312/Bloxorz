@@ -8,12 +8,15 @@ class LevelManager:
     def __init__(self, levels_dir: str = "levels"):
         self.levels_dir = Path(levels_dir)
         self.level_paths: list[Path] = []
-        self.current_index: int = 7 # level 8 to test more features
+        self.current_index: int = 0
 
         self.discover_levels()
 
     def discover_levels(self) -> list[Path]:
-        self.level_paths = sorted(self.levels_dir.rglob("*.json"))
+        self.level_paths = sorted(
+    self.levels_dir.rglob("*.json"),
+    key=lambda path: path.stem
+)
 
         if not self.level_paths:
             raise FileNotFoundError(
