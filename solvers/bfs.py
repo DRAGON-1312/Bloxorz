@@ -49,7 +49,7 @@ def solve(game: Game) -> SearchResult:
     start_time = time.perf_counter()
     tracemalloc.start()
 
-    start_state = game.state
+    start_state = game.initial_state
     
     # Khởi tạo Queue cho BFS và set để lưu các trạng thái đã duyệt
     frontier = deque([start_state])

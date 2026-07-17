@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Callable
 
-from ursina import Entity, color, curve, destroy, invoke
+from ursina import Entity, color, curve, destroy, Cylinder, invoke
 from ursina.shaders import lit_with_shadows_shader
 
 from core.tiles import TileType
@@ -239,7 +239,11 @@ class BoardView:
         Entity(
             parent=tile,
             name="SoftSwitchMarker",
-            model="cylinder",
+            model=Cylinder(
+                resolution=16,
+                radius=0.5,
+                height=1
+            ),
             position=(0, 0.62, 0),
             scale=(0.55, 0.08, 0.55),
             color=color.rgb32(130, 255, 150),
