@@ -10,6 +10,7 @@ from gui.solver_controller import SolverAlgorithm, SolverController
 
 if TYPE_CHECKING:
     from gui.input_controller import InputController
+    from gui.audio_manager import AudioManager
     from solvers.result import SearchResult
 
 
@@ -42,6 +43,7 @@ class SolverPanel(Entity):
         input_controller: InputController | None = None,
         on_result: Callable[[SolverAlgorithm, SearchResult], None] | None = None,
         on_replay: Callable[[list[str]], None] | None = None,
+        audio_manager: AudioManager | None = None,
         start_open: bool = False
     ) -> None:
         super().__init__(parent=camera.ui, name="SolverPanelRoot")
@@ -73,6 +75,7 @@ class SolverPanel(Entity):
         self.input_controller = input_controller
         self.on_result = on_result
         self.on_replay = on_replay
+        self.audio_manager = audio_manager
 
         self.selected_algorithm = SolverAlgorithm.BFS
         self.is_busy = False
@@ -92,6 +95,23 @@ class SolverPanel(Entity):
         self._refresh_algorithm_buttons()
         self._set_replay_available(False)
 
+
+    def _play_ui_click(self) -> None:
+        if self.audio_manager is not None:
+            self.audio_manager.play_ui_click()
+
+
+    def _with_click(
+        self,
+        callback: Callable
+    ) -> Callable:
+        def wrapped_callback(*args, **kwargs):
+            self._play_ui_click()
+            return callback(*args, **kwargs)
+
+        return wrapped_callback
+
+
     def _build_toggle_button(self) -> None:
         self.toggle_button = Button(
             parent=self,
@@ -106,7 +126,9 @@ class SolverPanel(Entity):
             highlight_color=self.BUTTON_HIGHLIGHT,
             pressed_color=self.BUTTON_PRESSED,
             text_color=color.white,
-            on_click=self.toggle
+            on_click=self._with_click(
+                self.toggle
+            )
         )
 
     def _build_panel(self) -> None:
@@ -158,7 +180,9 @@ class SolverPanel(Entity):
             highlight_color=color.rgb32(65, 155, 105),
             pressed_color=color.rgb32(35, 95, 65),
             text_color=color.white,
-            on_click=self.solve_selected
+            on_click=self._with_click(
+                self.solve_selected
+            )
         )
         self._panel_items.append(self.solve_button)
 
@@ -175,7 +199,9 @@ class SolverPanel(Entity):
             highlight_color=self.BUTTON_HIGHLIGHT,
             pressed_color=self.BUTTON_PRESSED,
             text_color=color.white,
-            on_click=self.replay_last_result
+            on_click=self._with_click(
+                self.replay_last_result
+            )
         )
         self._panel_items.append(self.replay_button)
 
@@ -297,7 +323,7 @@ class SolverPanel(Entity):
                 highlight_color=self.BUTTON_HIGHLIGHT,
                 pressed_color=self.BUTTON_PRESSED,
                 text_color=color.white,
-                on_click=(
+                on_click=self._with_click(
                     lambda selected=algorithm:
                     self.select_algorithm(selected)
                 )

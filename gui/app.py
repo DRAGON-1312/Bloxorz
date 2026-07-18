@@ -28,6 +28,7 @@ from gui.replay_controller import (
 )
 from gui.views.menu import MenuView
 from gui.save_manager import SaveManager
+from gui.audio_manager import AudioManager
 
 from core.state import BlockMode, Orientation
 from core.tiles import TileType
@@ -136,6 +137,9 @@ class BloxorzApp:
 
         self._configure_window()
 
+        # AudioManager được tạo sau Ursina để Audio Entity có thể load.
+        self.audio_manager = AudioManager()
+
         # Save slot duy nhất của phiên bản hiện tại.
         self.save_manager = SaveManager()
         self.current_save_slot = 1
@@ -153,7 +157,9 @@ class BloxorzApp:
         # 2. Tạo các View
         self.board_view = BoardView(self.board)
         self.block_view = BlockView()
-        self.hud = HUD()
+        self.hud = HUD(
+            audio_manager=self.audio_manager
+        )
 
         # 3. Tạo GameController
         # GameController sẽ:
@@ -165,7 +171,8 @@ class BloxorzApp:
             board=self.board,
             board_view=self.board_view,
             block_view=self.block_view,
-            hud=self.hud
+            hud=self.hud,
+            audio_manager=self.audio_manager
         )
 
         # 4. Tạo SolverController
@@ -200,6 +207,7 @@ class BloxorzApp:
         self.solver_panel = SolverPanel(
             solver_controller=self.solver_controller,
             input_controller=self.input_controller,
+            audio_manager=self.audio_manager,
 
             # Khi vào game chỉ hiện nút Solver,
             # không tự mở toàn bộ panel.
@@ -238,6 +246,7 @@ class BloxorzApp:
             on_resume=self._close_menu,
             on_sound_changed=self._handle_sound_changed,
             on_exit=application.quit,
+            audio_manager=self.audio_manager,
             start_visible=True
         )
 
@@ -487,11 +496,12 @@ class BloxorzApp:
         is_enabled: bool
     ) -> None:
         """
-        Tạm lưu trạng thái Sound để test giao diện.
-
-        AudioManager sẽ được nối sau.
+        Bật hoặc tắt toàn bộ sound effect của game.
         """
-        self.sound_enabled = is_enabled
+        self.sound_enabled = bool(is_enabled)
+        self.audio_manager.set_enabled(
+            self.sound_enabled
+        )
 
 
     def _configure_window(self) -> None:

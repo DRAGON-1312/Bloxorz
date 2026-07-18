@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from enum import Enum
 from textwrap import fill
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from ursina import Button, Entity, Text, camera, color, window
+
+if TYPE_CHECKING:
+    from gui.audio_manager import AudioManager
 
 
 class MenuScreen(str, Enum):
@@ -154,6 +157,7 @@ class MenuView(Entity):
         on_resume: Callable[[], None] | None = None,
         on_sound_changed: Callable[[bool], None] | None = None,
         on_exit: Callable[[], None] | None = None,
+        audio_manager: AudioManager | None = None,
         start_visible: bool = True
     ) -> None:
         """
@@ -213,6 +217,7 @@ class MenuView(Entity):
         self.on_resume = on_resume
         self.on_sound_changed = on_sound_changed
         self.on_exit = on_exit
+        self.audio_manager = audio_manager
 
         # Trạng thái của các mục menu.
         self._continue_available = False
@@ -540,7 +545,7 @@ class MenuView(Entity):
                 highlight_color=self.BUTTON_HIGHLIGHT,
                 pressed_color=self.BUTTON_PRESSED,
                 text_color=color.white,
-                on_click=(
+                on_click=self._with_click(
                     lambda selected_index=index:
                     self._request_level(selected_index)
                 )
@@ -687,7 +692,7 @@ class MenuView(Entity):
             color=self.BUTTON_COLOR,
             highlight_color=self.BUTTON_HIGHLIGHT,
             pressed_color=self.BUTTON_PRESSED,
-            on_click=callback
+            on_click=self._with_click(callback)
         )
 
         # Label là sibling của Button, không bị scale méo theo button
@@ -733,7 +738,7 @@ class MenuView(Entity):
             color=self.BUTTON_COLOR,
             highlight_color=self.BUTTON_HIGHLIGHT,
             pressed_color=self.BUTTON_PRESSED,
-            on_click=callback
+            on_click=self._with_click(callback)
         )
 
         label = Text(
@@ -774,7 +779,9 @@ class MenuView(Entity):
             highlight_color=self.BUTTON_HIGHLIGHT,
             pressed_color=self.BUTTON_PRESSED,
             text_color=color.white,
-            on_click=self.show_main_menu
+            on_click=self._with_click(
+                self.show_main_menu
+            )
         )
 
         parent_items.append(button)
@@ -1095,6 +1102,11 @@ class MenuView(Entity):
                 self._sound_enabled
             )
 
+        # Khi bật từ Off -> On, click wrapper đã chạy lúc AudioManager
+        # còn bị tắt. Phát lại một click sau khi callback bật âm thanh.
+        if self._sound_enabled:
+            self._play_ui_click()
+
 
     def _request_exit(self) -> None:
         if self.on_exit is not None:
@@ -1112,6 +1124,23 @@ class MenuView(Entity):
         self.on_level_selected(
             level_index
         )
+
+
+
+    def _play_ui_click(self) -> None:
+        if self.audio_manager is not None:
+            self.audio_manager.play_ui_click()
+
+
+    def _with_click(
+        self,
+        callback: Callable
+    ) -> Callable:
+        def wrapped_callback(*args, **kwargs):
+            self._play_ui_click()
+            return callback(*args, **kwargs)
+
+        return wrapped_callback
 
 
     @staticmethod

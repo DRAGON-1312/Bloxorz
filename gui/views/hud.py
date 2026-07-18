@@ -7,6 +7,7 @@ from ursina import Button, Entity, Text, camera, color
 if TYPE_CHECKING:
     from core.board import Board
     from core.state import State
+    from gui.audio_manager import AudioManager
 
 
 class HUD:
@@ -32,7 +33,8 @@ class HUD:
         self,
         on_restart: Callable[[], None] | None = None,
         on_next_level: Callable[[], None] | None = None,
-        on_main_menu: Callable[[], None] | None = None
+        on_main_menu: Callable[[], None] | None = None,
+        audio_manager: AudioManager | None = None
     ):
         """
         on_restart:
@@ -47,6 +49,7 @@ class HUD:
         self.on_restart = on_restart
         self.on_next_level = on_next_level
         self.on_main_menu = on_main_menu
+        self.audio_manager = audio_manager
         self._completion_is_last_level = False
 
         # Root chứa toàn bộ thành phần UI của HUD.
@@ -351,6 +354,8 @@ class HUD:
 
 
     def _handle_completion_action(self) -> None:
+        self._play_ui_click()
+
         if self._completion_is_last_level:
             if self.on_main_menu is not None:
                 self.on_main_menu()
@@ -399,8 +404,16 @@ class HUD:
         """
         Được Ursina gọi khi người chơi nhấn nút Restart.
         """
+        self._play_ui_click()
+
         if self.on_restart is not None:
             self.on_restart()
+
+
+
+    def _play_ui_click(self) -> None:
+        if self.audio_manager is not None:
+            self.audio_manager.play_ui_click()
 
 
     def set_visible(self, is_visible: bool) -> None:
