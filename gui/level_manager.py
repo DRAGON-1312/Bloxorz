@@ -108,6 +108,27 @@ class LevelManager:
         return len(self.level_paths)
     
 
+
+    def is_last_level(self) -> bool:
+        """
+        True khi current_index đang ở level cuối.
+        """
+        return (
+            self.current_index
+            == len(self.level_paths) - 1
+        )
+
+
+    def has_next_level(self) -> bool:
+        """
+        True khi còn level kế tiếp.
+        """
+        return (
+            self.current_index
+            < len(self.level_paths) - 1
+        )
+
+
     def load_current(self) -> Board:
         """
         Load level đang được chọn bởi current_index.
@@ -142,11 +163,15 @@ class LevelManager:
     def next_level(self) -> Board:
         """
         Chuyển sang level kế tiếp và load level đó.
-        Toán tử % giúp quay lại level đầu tiên khi đang ở level cuối.
+
+        Không quay vòng về Stage 01 khi đang ở level cuối.
         """
-        self.current_index = (
-            self.current_index + 1
-        ) % len(self.level_paths)
+        if not self.has_next_level():
+            raise IndexError(
+                "Current level is already the final level."
+            )
+
+        self.current_index += 1
 
         return self.load_current()
     

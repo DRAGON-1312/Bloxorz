@@ -127,7 +127,10 @@ class InputController:
     def load_next_level(self) -> bool:
         if self.level_manager is None:
             return False
-        
+
+        if not self.level_manager.has_next_level():
+            return False
+
         board = self.level_manager.next_level()
 
         self.game_controller.load_board(board)

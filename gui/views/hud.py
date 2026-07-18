@@ -30,7 +30,9 @@ class HUD:
 
     def __init__(
         self,
-        on_restart: Callable[[], None] | None = None
+        on_restart: Callable[[], None] | None = None,
+        on_next_level: Callable[[], None] | None = None,
+        on_main_menu: Callable[[], None] | None = None
     ):
         """
         on_restart:
@@ -43,6 +45,9 @@ class HUD:
             )
         """
         self.on_restart = on_restart
+        self.on_next_level = on_next_level
+        self.on_main_menu = on_main_menu
+        self._completion_is_last_level = False
 
         # Root chứa toàn bộ thành phần UI của HUD.
         #
@@ -158,6 +163,24 @@ class HUD:
             on_click=self._handle_restart
         )
 
+
+        # Nút chính của completion screen:
+        # - Next Level ở level thường.
+        # - Back to Main Menu ở level cuối.
+        self.completion_button = Button(
+            parent=self.root,
+            name="CompletionButton",
+            text="Next Level",
+            position=(0, 0.22),
+            scale=(0.22, 0.055),
+            color=color.rgb32(55, 105, 145),
+            highlight_color=color.rgb32(75, 135, 180),
+            pressed_color=color.rgb32(40, 80, 115),
+            text_color=color.white,
+            on_click=self._handle_completion_action,
+            enabled=False
+        )
+
     def update(
         self,
         board: Board,
@@ -246,6 +269,10 @@ class HUD:
             hud.show_message("Invalid move")
             hud.show_message("No solution found")
         """
+        # Thông báo thông thường không dùng completion button.
+        self.completion_button.enabled = False
+        self._completion_is_last_level = False
+
         self.message_text.text = message
         self.message_text.enabled = bool(message)
 
@@ -257,6 +284,81 @@ class HUD:
             )
         else:
             self.message_text.color = message_color
+
+
+    def show_completion(
+        self,
+        level_name: str,
+        move_count: int,
+        is_last_level: bool,
+        total_stages: int
+    ) -> None:
+        """
+        Hiển thị completion screen nhưng vẫn giữ board và SolverPanel.
+        """
+        self._completion_is_last_level = (
+            is_last_level
+        )
+
+        # Completion screen tối giản:
+        # chỉ hiện thông báo chiến thắng và một nút hành động chính.
+        message = "You win!"
+
+        button_text = (
+            "Back to Main Menu"
+            if is_last_level
+            else "Next Level"
+        )
+
+        self.message_text.text = message
+        self.message_text.enabled = True
+        self.message_text.color = color.rgb32(
+            255,
+            220,
+            80
+        )
+        self.message_text.scale = 2.0
+        self.message_text.position = (
+            0,
+            0.39
+        )
+
+        self.completion_button.text = (
+            button_text
+        )
+        self.completion_button.enabled = True
+
+
+    def set_completion_callbacks(
+        self,
+        on_next_level: Callable[[], None] | None,
+        on_main_menu: Callable[[], None] | None
+    ) -> None:
+        """
+        Gán callback completion sau khi App được khởi tạo.
+        """
+        for callback, callback_name in (
+            (on_next_level, "on_next_level"),
+            (on_main_menu, "on_main_menu")
+        ):
+            if callback is not None and not callable(callback):
+                raise TypeError(
+                    f"{callback_name} must be callable or None."
+                )
+
+        self.on_next_level = on_next_level
+        self.on_main_menu = on_main_menu
+
+
+    def _handle_completion_action(self) -> None:
+        if self._completion_is_last_level:
+            if self.on_main_menu is not None:
+                self.on_main_menu()
+            return
+
+        if self.on_next_level is not None:
+            self.on_next_level()
+
 
     def show_failed_status(self) -> None:
         """
@@ -275,6 +377,11 @@ class HUD:
         """
         self.message_text.text = ""
         self.message_text.enabled = False
+        self.message_text.scale = 2.0
+        self.message_text.position = (0, 0.40)
+
+        self.completion_button.enabled = False
+        self._completion_is_last_level = False
 
     def set_restart_callback(
         self,

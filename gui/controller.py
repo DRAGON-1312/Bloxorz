@@ -1,12 +1,13 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
+
+from typing import TYPE_CHECKING, Callable
 
 from core.game import Game
-from core.move_result import MoveStatus
-
+from core.move_result import MoveResult, MoveStatus
 
 if TYPE_CHECKING:
     from core.board import Board
+    from core.state import State
     from gui.views.board import BoardView
     from gui.views.block import BlockView
     from gui.views.hud import HUD
@@ -14,21 +15,11 @@ if TYPE_CHECKING:
 
 class GameController:
     """
-    Điều phối giữa game logic và phần hiển thị GUI.
+    Điều phối Game logic, GUI và animation.
 
-    Trách nhiệm:
-    - Giữ đối tượng Game hiện tại.
-    - Nhận action từ InputController.
-    - Gọi game.try_move(action).
-    - Cập nhật BoardView và BlockView.
-    - Đếm số lần di chuyển.
-    - Kiểm tra trạng thái chiến thắng.
-    - Restart hoặc load board mới.
-
-    GameController không:
-    - Đọc trực tiếp bàn phím.
-    - Tự tạo Entity của Ursina.
-    - Chạy BFS, IDS, UCS hoặc A*.
+    Game.try_move() quyết định state trước.
+    GameController sau đó phát animation từ previous_state
+    đến resulting_state/attempted_state và khóa input bằng is_animating.
     """
 
     def __init__(
@@ -37,13 +28,11 @@ class GameController:
         board_view: BoardView,
         block_view: BlockView,
         hud: HUD | None = None
-    ):
-        # Các View được truyền từ App.
+    ) -> None:
         self.board_view = board_view
         self.block_view = block_view
         self.hud = hud
 
-        # Board và Game sẽ được khởi tạo trong load_board().
         self.board: Board
         self.game: Game
 
@@ -51,15 +40,21 @@ class GameController:
         self.is_finished = False
         self.is_animating = False
 
-        self.load_board(board)
+        # App dùng callback này để hiển thị completion screen
+        # sau khi block đã chìm hoàn toàn vào Goal.
+        self.on_level_completed: Callable[[int], None] | None = None
 
+        self.load_board(board)
 
     def handle_action(self, action: str) -> bool:
         """
-        Thực hiện action và xử lý đầy đủ:
-        IGNORED, MOVED, WON hoặc LOST.
+        Thực hiện action và phát animation tương ứng.
+
+        Return:
+            True khi action là MOVED, WON hoặc LOST.
+            False khi action bị IGNORED hoặc controller đang bận.
         """
-        if self.is_finished:
+        if self.is_finished or self.is_animating:
             return False
 
         result = self.game.try_move(action)
@@ -67,84 +62,208 @@ class GameController:
         if result.status == MoveStatus.IGNORED:
             return False
 
-        # Action được tính là một bước kể cả khi người chơi rơi.
+        # Một action dẫn đến rơi vẫn được tính là một bước.
         self.move_count += 1
 
-        if result.status == MoveStatus.MOVED:
-            self.refresh_views()
-            return True
-
-        if result.status == MoveStatus.WON:
-            self.is_finished = True
-            self.refresh_views()
-
-            if self.hud is not None:
-                self.hud.show_message(
-                    "You win!\nPress N for next level"
-                )
-
+        if result.status in {
+            MoveStatus.MOVED,
+            MoveStatus.WON,
+        }:
+            self._start_successful_move_animation(
+                result=result,
+                action=action
+            )
             return True
 
         if result.status == MoveStatus.LOST:
-            self.is_finished = True
-            self.is_animating = True
-
-            # Cập nhật số bước trước khi phát animation rơi.
-            if self.hud is not None:
-                self.hud.update(
-                    board=self.board,
-                    state=result.previous_state,
-                    move_count=self.move_count,
-                    is_finished=False
-                )
-
-            attempted_state = result.attempted_state
-
-            if attempted_state is None:
-                self._finish_loss()
-
-            elif result.reason == "standing_on_fragile":
-                # Trước tiên đặt block đứng trên fragile tile
-                # để người chơi thấy nguyên nhân tile bị vỡ.
-                self.block_view.update(attempted_state)
-
-                def start_block_fall() -> None:
-                    """
-                    Được gọi sau khi fragile tile đã vỡ hoàn toàn.
-                    """
-                    self.block_view.play_fall(
-                        attempted_state=attempted_state,
-                        on_complete=self._finish_loss
-                    )
-
-                self.board_view.play_fragile_break(
-                    row=attempted_state.row,
-                    col=attempted_state.col,
-                    on_complete=start_block_fall
-                )
-
-            else:
-                # Các trường hợp khác:
-                # - Ra ngoài board.
-                # - Đi vào VOID.
-                # - Đi lên bridge đang đóng.
-                self.block_view.play_fall(
-                    attempted_state=attempted_state,
-                    on_complete=self._finish_loss
-                )
-
+            self._start_loss_animation(
+                result=result,
+                action=action
+            )
             return True
 
         raise RuntimeError(
             f"Unsupported move status: {result.status}"
         )
-    
+
+    def _start_successful_move_animation(
+        self,
+        result: MoveResult,
+        action: str
+    ) -> None:
+        resulting_state = result.resulting_state
+
+        if resulting_state is None:
+            raise RuntimeError(
+                "MOVED/WON result requires resulting_state."
+            )
+
+        move_won = (
+            result.status == MoveStatus.WON
+        )
+
+        self.is_finished = move_won
+        self.is_animating = True
+
+        # HUD tăng move count ngay, nhưng giữ orientation cũ
+        # cho đến khi animation block kết thúc.
+        self._update_hud_during_animation(
+            result.previous_state
+        )
+
+        def finish_move() -> None:
+            # Switch và bridge chỉ đổi hình ảnh sau khi block chạm đất.
+            self.board_view.update(
+                resulting_state
+            )
+
+            if move_won:
+                # Giữ is_animating=True trong toàn bộ goal animation.
+                # Input và replay sẽ tự chờ block chìm hoàn tất.
+                self.block_view.play_goal_drop(
+                    goal_state=resulting_state,
+                    on_complete=self._finish_win_animation
+                )
+                return
+
+            self.is_animating = False
+
+            self.refresh_views(
+                update_block=False
+            )
+
+        self.block_view.play_move(
+            previous_state=result.previous_state,
+            resulting_state=resulting_state,
+            action=action,
+            on_complete=finish_move
+        )
+
+
+    def set_level_completed_callback(
+        self,
+        callback: Callable[[int], None] | None
+    ) -> None:
+        """
+        Gán callback được gọi sau khi goal-drop animation kết thúc.
+
+        Callback nhận move_count của level vừa hoàn thành.
+        """
+        if callback is not None and not callable(callback):
+            raise TypeError(
+                "level completed callback must be callable or None."
+            )
+
+        self.on_level_completed = callback
+
+
+    def _finish_win_animation(self) -> None:
+        """
+        Hoàn tất chiến thắng sau khi block đã chìm vào Goal.
+        """
+        self.is_animating = False
+
+        # Block đang bị ẩn dưới Goal nên không update BlockView.
+        # Board, HUD và Solver statistics vẫn được giữ nguyên.
+        self.refresh_views(
+            update_block=False
+        )
+
+        if self.on_level_completed is not None:
+            self.on_level_completed(
+                self.move_count
+            )
+            return
+
+        if self.hud is not None:
+            self.hud.show_message(
+                "Stage Complete!\\nPress N for next level"
+            )
+
+
+    def _start_loss_animation(
+        self,
+        result: MoveResult,
+        action: str
+    ) -> None:
+        self.is_finished = True
+        self.is_animating = True
+
+        self._update_hud_during_animation(
+            result.previous_state
+        )
+
+        attempted_state = result.attempted_state
+
+        if attempted_state is None:
+            self._finish_loss()
+            return
+
+        def start_failure_effect() -> None:
+            # Chỉ kích hoạt thay đổi bridge/switch sau khi block đã lăn
+            # đến vị trí attempted_state.
+            self.board_view.update(
+                attempted_state
+            )
+
+            if result.reason == "standing_on_fragile":
+                self._play_fragile_failure(
+                    attempted_state
+                )
+                return
+
+            self.block_view.play_fall(
+                attempted_state=attempted_state,
+                on_complete=self._finish_loss
+            )
+
+        # Trước khi rơi, block/cube vẫn lăn đến vị trí nước đi thất bại.
+        self.block_view.play_move(
+            previous_state=result.previous_state,
+            resulting_state=attempted_state,
+            action=action,
+            on_complete=start_failure_effect
+        )
+
+    def _play_fragile_failure(
+        self,
+        attempted_state: State
+    ) -> None:
+        """
+        Sau khi block đã lăn và đứng trên fragile tile:
+        tile vỡ trước, block rơi sau.
+        """
+        def start_block_fall() -> None:
+            self.block_view.play_fall(
+                attempted_state=attempted_state,
+                on_complete=self._finish_loss
+            )
+
+        self.board_view.play_fragile_break(
+            row=attempted_state.row,
+            col=attempted_state.col,
+            on_complete=start_block_fall
+        )
+
+    def _update_hud_during_animation(
+        self,
+        state: State
+    ) -> None:
+        if self.hud is None:
+            return
+
+        self.hud.update(
+            board=self.board,
+            state=state,
+            move_count=self.move_count,
+            is_finished=False
+        )
 
     def restart(self) -> None:
         """
         Khởi động lại level hiện tại.
 
-        Không cho restart trong khi animation vẫn đang chạy.
+        Không restart khi animation vẫn đang chạy.
         """
         if self.is_animating:
             return
@@ -154,24 +273,14 @@ class GameController:
         self.is_finished = False
         self.is_animating = False
 
-        # Khôi phục fragile tile từng bị vỡ.
         self.board_view.reset_fragile_tiles()
 
         if self.hud is not None:
             self.hud.clear_message()
 
         self.refresh_views()
-    
 
     def load_board(self, board: Board) -> None:
-        """
-        Load một board mới.
-
-        Hàm này được dùng khi:
-        - Khởi động game.
-        - Chuyển level.
-        - Chọn level từ menu.
-        """
         self.board = board
         self.game = Game(board)
 
@@ -179,7 +288,6 @@ class GameController:
         self.is_finished = False
         self.is_animating = False
 
-        # BoardView phải xây lại các tile cho level mới.
         self.board_view.load_board(board)
 
         if self.hud is not None:
@@ -187,18 +295,22 @@ class GameController:
 
         self.refresh_views()
 
-
-    def refresh_views(self) -> None:
+    def refresh_views(
+        self,
+        update_block: bool = True
+    ) -> None:
         """
-        Đồng bộ GUI với Game state hiện tại.
+        Đồng bộ GUI với Game state.
+
+        update_block=False được dùng ngay sau rotate animation vì
+        BlockView đã ở đúng state với quaternion vật lý tích lũy.
         """
         state = self.game.state
 
-        # Cập nhật bridge theo state.bridges.
         self.board_view.update(state)
 
-        # Cập nhật vị trí, orientation hoặc split cubes.
-        self.block_view.update(state)
+        if update_block:
+            self.block_view.update(state)
 
         if self.hud is not None:
             self.hud.update(
@@ -208,11 +320,7 @@ class GameController:
                 is_finished=self.is_finished
             )
 
-
     def _finish_loss(self) -> None:
-        """
-        Kết thúc trạng thái animation rơi và cập nhật HUD.
-        """
         self.is_animating = False
 
         if self.hud is not None:
