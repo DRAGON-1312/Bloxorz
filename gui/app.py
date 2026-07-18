@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from ursina import (
     Entity,
@@ -9,7 +9,8 @@ from ursina import (
     camera,
     lerp,
     time,
-    window
+    window,
+    application
 )
 
 from gui.controller import GameController
@@ -25,6 +26,8 @@ from gui.replay_controller import (
     ReplayController,
     ReplayState
 )
+from gui.views.menu import MenuView
+from gui.save_manager import SaveManager
 
 from core.state import BlockMode, Orientation
 from core.tiles import TileType
@@ -54,11 +57,13 @@ class KeyboardHandler(Entity):
 
     def __init__(
         self,
-        input_controller: InputController
+        input_controller: InputController,
+        on_menu_requested: Callable[[], None] | None = None
     ) -> None:
         super().__init__(name="KeyboardHandler")
 
         self.input_controller = input_controller
+        self.on_menu_requested = on_menu_requested
 
 
     def input(self, key: str) -> None:
@@ -75,6 +80,14 @@ class KeyboardHandler(Entity):
 
         InputController sẽ tự bỏ qua các phím không nằm trong keymap.
         """
+        normalized_key = key.strip().lower()
+
+        if normalized_key == "escape":
+            if self.on_menu_requested is not None:
+                self.on_menu_requested()
+
+            return
+
         self.input_controller.handle_input(key)
 
 
@@ -122,6 +135,13 @@ class BloxorzApp:
         self.ursina_app = Ursina()
 
         self._configure_window()
+
+        # Save slot duy nhất của phiên bản hiện tại.
+        self.save_manager = SaveManager()
+        self.current_save_slot = 1
+
+        self.has_started_game = False
+        self.sound_enabled = True
 
         # Tạo nền, ánh sáng và bóng đổ trước khi dựng board.
         self.scene_environment = SceneEnvironment()
@@ -171,9 +191,9 @@ class BloxorzApp:
             solver_controller=self.solver_controller,
             input_controller=self.input_controller,
 
-            # True để mở panel ngay khi test.
-            # Sau này có thể đổi thành False.
-            start_open=True
+            # Khi vào game chỉ hiện nút Solver,
+            # không tự mở toàn bộ panel.
+            start_open=False
         )
 
         # 7. Create replay_controller
@@ -199,20 +219,246 @@ class BloxorzApp:
             "Click Replay again to stop."
         )
 
-        # 8. Nối bàn phím Ursina với InputController
+        # 8. Tạo Main Menu.
+        self.menu_view = MenuView(
+            level_count=self.level_manager.get_level_count(),
+            on_new_game=self._start_new_game,
+            on_continue=self._continue_game,
+            on_level_selected=self._start_selected_level,
+            on_resume=self._close_menu,
+            on_sound_changed=self._handle_sound_changed,
+            on_exit=application.quit,
+            start_visible=True
+        )
+
+        saved_level_index = self.save_manager.load_save(
+            self.current_save_slot
+        )
+
+        has_valid_save = (
+            saved_level_index is not None
+            and 0 <= saved_level_index
+            < self.level_manager.get_level_count()
+        )
+
+        self.menu_view.set_continue_available(
+            has_valid_save
+        )
+
+        self.menu_view.set_continue_level(
+            saved_level_index
+            if has_valid_save
+            else None
+        )
+
+        self.menu_view.set_resume_available(False)
+        self.menu_view.set_sound_enabled(
+            self.sound_enabled
+        )
+
+        # 9. Nối bàn phím Ursina với InputController
         # KeyboardHandler là một Entity nên Ursina sẽ tự động gọi
         # keyboard_handler.input(key) mỗi khi người dùng nhấn phím.
         self.keyboard_handler = KeyboardHandler(
-            input_controller=self.input_controller
+            input_controller=self.input_controller,
+            on_menu_requested=self._handle_menu_requested
         )
 
-        # 9. Đặt camera nhìn vào board
+        # 10. Đặt camera nhìn vào board.
         self._setup_camera()
 
-        # 10. Cho camera bám nhẹ theo block ở mỗi frame.
+        # Khi khởi động, chỉ hiển thị Main Menu.
+        self._set_game_visible(False)
+        self.input_controller.enabled = False
+
+        # 11. Cho camera bám nhẹ theo block ở mỗi frame.
         # self.camera_follower = CameraFollower(self)
 
     
+    def _set_game_visible(
+        self,
+        is_visible: bool
+    ) -> None:
+        """
+        Ẩn hoặc hiện toàn bộ thành phần gameplay.
+        """
+        self.board_view.root.enabled = is_visible
+        self.block_view.root.enabled = is_visible
+        self.hud.root.enabled = is_visible
+        self.solver_panel.enabled = is_visible
+
+
+    def _load_level_from_menu(
+        self,
+        level_index: int
+    ) -> None:
+        """
+        Load level do New Game hoặc Level Select yêu cầu.
+        """
+        self.replay_controller.stop()
+
+        board = self.level_manager.load_by_index(
+            level_index
+        )
+
+        self.game_controller.load_board(
+            board
+        )
+
+        self.board = board
+
+        # Không giữ kết quả solver của level trước.
+        self.solver_panel.clear_result()
+
+        self.menu_view.set_current_level(
+            level_index
+        )
+
+        # Ghi level gần nhất để lần mở game sau có thể Continue.
+        self.save_manager.save_game(
+            slot=self.current_save_slot,
+            level_index=level_index
+        )
+
+        self.menu_view.set_continue_available(
+            True
+        )
+
+        self.menu_view.set_continue_level(
+            level_index
+        )
+
+        self.has_started_game = True
+        self.menu_view.set_resume_available(True)
+
+        self._setup_camera()
+        self._close_menu()
+
+
+    def _continue_game(self) -> None:
+        """
+        Mở lại level gần nhất từ save file.
+
+        Level được bắt đầu lại từ initial state,
+        không khôi phục vị trí block đang chơi dở.
+        """
+        saved_level_index = self.save_manager.load_save(
+            self.current_save_slot
+        )
+
+        if saved_level_index is None:
+            self.menu_view.set_continue_available(
+                False
+            )
+
+            self.menu_view.set_continue_level(
+                None
+            )
+            return
+
+        level_count = (
+            self.level_manager.get_level_count()
+        )
+
+        if not 0 <= saved_level_index < level_count:
+            # Save không còn phù hợp với danh sách level hiện tại.
+            self.save_manager.delete_save(
+                self.current_save_slot
+            )
+
+            self.menu_view.set_continue_available(
+                False
+            )
+
+            self.menu_view.set_continue_level(
+                None
+            )
+            return
+
+        self._load_level_from_menu(
+            saved_level_index
+        )
+
+
+    def _start_new_game(self) -> None:
+        """
+        New Game luôn bắt đầu tại Stage 01.
+        """
+        self._load_level_from_menu(0)
+
+
+    def _start_selected_level(
+        self,
+        level_index: int
+    ) -> None:
+        """
+        Bắt đầu level người dùng chọn trong Level Select.
+        """
+        self._load_level_from_menu(
+            level_index
+        )
+
+
+    def _open_menu(self) -> None:
+        """
+        Tạm dừng gameplay và mở Main Menu.
+        """
+        if self.solver_panel.is_busy:
+            return
+
+        if self.game_controller.is_animating:
+            return
+
+        self.replay_controller.stop()
+
+        self.input_controller.enabled = False
+        self._set_game_visible(False)
+
+        self.menu_view.set_resume_available(
+            self.has_started_game
+        )
+        self.menu_view.show()
+
+
+    def _close_menu(self) -> None:
+        """
+        Đóng menu và quay lại game hiện tại.
+        """
+        if not self.has_started_game:
+            return
+
+        self.menu_view.hide()
+        self._set_game_visible(True)
+        self.input_controller.enabled = True
+
+
+    def _handle_menu_requested(self) -> None:
+        """
+        Xử lý phím Escape.
+
+        - Menu đang đóng: mở Main Menu.
+        - Menu đang mở ở màn hình con: quay về Main Menu.
+        - Menu đang mở ở Main Menu: Resume nếu đã có game.
+        """
+        if self.menu_view.is_open:
+            self.menu_view.handle_escape()
+            return
+
+        self._open_menu()
+
+
+    def _handle_sound_changed(
+        self,
+        is_enabled: bool
+    ) -> None:
+        """
+        Tạm lưu trạng thái Sound để test giao diện.
+
+        AudioManager sẽ được nối sau.
+        """
+        self.sound_enabled = is_enabled
+
+
     def _configure_window(self) -> None:
         window.title = "Bloxorz Solver"
         window.borderless = False
@@ -612,6 +858,27 @@ class BloxorzApp:
 
         # Xóa path và statistics của level trước.
         self.solver_panel.clear_result()
+
+        current_level_index = (
+            self.level_manager.current_index
+        )
+
+        self.menu_view.set_current_level(
+            current_level_index
+        )
+
+        self.save_manager.save_game(
+            slot=self.current_save_slot,
+            level_index=current_level_index
+        )
+
+        self.menu_view.set_continue_available(
+            True
+        )
+
+        self.menu_view.set_continue_level(
+            current_level_index
+        )
 
         # Tính lại camera theo level mới.
         self._setup_camera()
