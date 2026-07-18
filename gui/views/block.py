@@ -843,6 +843,7 @@ class BlockView:
     def play_goal_drop(
         self,
         goal_state: State,
+        on_drop_started: Callable[[], None] | None = None,
         on_complete: Callable[[], None] | None = None
     ) -> None:
         """
@@ -887,6 +888,10 @@ class BlockView:
         )
 
         def start_drop() -> None:
+            self._call_if_present(
+                on_drop_started
+            )
+
             # Chỉ thay đổi Y. X/Z và rotation được giữ nguyên.
             goal_block.animate_y(
                 target_y,
