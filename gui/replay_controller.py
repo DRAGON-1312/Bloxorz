@@ -168,7 +168,7 @@ class ReplayController(Entity):
             return 0.0
         
         return (
-            self._current_index / len(self.path)
+            self._current_index / len(self._path)
         )
     
 

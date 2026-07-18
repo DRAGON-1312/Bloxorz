@@ -186,6 +186,16 @@ class BloxorzApp:
             on_level_changed=self._handle_level_changed
         )
 
+        # Chỉ hiện completion screen sau khi block đã chìm vào Goal.
+        self.game_controller.set_level_completed_callback(
+            self._handle_level_completed
+        )
+
+        self.hud.set_completion_callbacks(
+            on_next_level=self._handle_completion_next_level,
+            on_main_menu=self._open_menu
+        )
+
         # 6. Tạo SolverPanel
         self.solver_panel = SolverPanel(
             solver_controller=self.solver_controller,
@@ -445,6 +455,31 @@ class BloxorzApp:
             return
 
         self._open_menu()
+
+
+
+    def _handle_level_completed(
+        self,
+        move_count: int
+    ) -> None:
+        """
+        Hiển thị completion screen sau goal-drop animation.
+
+        Board và Solver statistics được giữ nguyên.
+        """
+        self.hud.show_completion(
+            level_name=self.board.name,
+            move_count=move_count,
+            is_last_level=self.level_manager.is_last_level(),
+            total_stages=self.level_manager.get_level_count()
+        )
+
+
+    def _handle_completion_next_level(self) -> None:
+        """
+        Callback của nút Next Level trên HUD.
+        """
+        self.input_controller.load_next_level()
 
 
     def _handle_sound_changed(
