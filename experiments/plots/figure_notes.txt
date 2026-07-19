@@ -1,0 +1,23 @@
+REPORT FIGURE NOTES
+
+1. Expanded Nodes, Search Time and Peak Memory use logarithmic y-axes
+   because their values differ by several orders of magnitude.
+
+2. The stages are independent benchmark instances, not a continuous
+   time series. Grouped bar charts are therefore used instead of line
+   charts. A large value at Stage 08 followed by a smaller Stage 09 value
+   means Stage 08 has a more difficult search space; it is not a plotting
+   error and does not imply that performance should change monotonically.
+
+3. Search Time and Peak Memory:
+   - bar height = median of repeated runs;
+   - lower and upper error bars = minimum and maximum observed values.
+
+4. Expanded Nodes, Solution Length and Solution Cost are deterministic
+   metrics, so Min-Max ranges are not necessary when repeated runs return
+   the same solution and node count.
+
+5. Solution Length and Solution Cost are shown as two side-by-side panels
+   in one figure. This makes it easier to compare the trade-off between
+   path length and total path cost while avoiding the visual ambiguity of
+   a dual-y-axis chart.
