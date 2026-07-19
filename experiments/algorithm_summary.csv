@@ -1,0 +1,5 @@
+algorithm,tested_levels,solved_levels,valid_levels,consistent_levels,total_expanded_nodes,median_search_time_ms,median_memory_usage_kb,mean_solution_length,mean_solution_cost
+BFS,10,10,10,10,13176,15.300550003303215,88.1171875,28.3,45.3
+IDS,10,10,10,10,1974332,185.68064999999478,52.28271484375,28.3,45.3
+UCS,10,10,10,10,14256,14.741750004759524,70.048828125,28.6,43.1
+A*,10,10,10,10,12571,14.199099998222664,62.29052734375,28.6,43.1
